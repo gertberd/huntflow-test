@@ -286,7 +286,6 @@ def prepare_to_attach(applicant):
 def attach_to_vacancy(headers, account_id, applicant, prepared_applicant):
     applicant_id = applicant.get('huntflow_response').get('id')
     api_method = f'/account/{account_id}/applicants/{applicant_id}/vacancy'
-    print(prepared_applicant)
     url = f'{api_endpoint}{api_method}'
     try:
         response = requests.post(url, headers=headers, data=json.dumps(prepared_applicant))
@@ -303,7 +302,6 @@ def attach_to_vacancy(headers, account_id, applicant, prepared_applicant):
         click.echo(f'Трудноуловимая ошибка: {err}')
     else:
         click.echo(f'Кандидат добавлен.')
-        print(response.json())
         return response.json()
     return
 
