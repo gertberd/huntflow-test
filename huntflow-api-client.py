@@ -3,6 +3,7 @@ import click
 import requests
 import mimetypes
 import pandas as pd
+import colorama
 from pathlib import Path
 from tinydb import TinyDB, where
 
@@ -45,6 +46,7 @@ def get_request(headers, api_method):
 
 
 def get_vacancies(headers, account_id):
+    click.echo('Получение вакансий...')
     vacancies = get_request(
         headers, f'/account/{account_id}/vacancies'
     ).get('items')
@@ -55,6 +57,7 @@ def get_vacancies(headers, account_id):
 
 
 def get_statuses(headers, account_id):
+    click.echo('Получение статусов...')
     statuses = get_request(
         headers, f'/account/{account_id}/vacancy/statuses'
     ).get('items')
@@ -153,21 +156,26 @@ def parse_resume(headers, account_id, resume):
     return
 
 
-def parse_resumes(headers, account_id, resumes_db, applicants_db, unparsed_resumes):
-    for resume in unparsed_resumes:
-        parsed_resume = parse_resume(headers, account_id, resume)
-        resumes_db.update({'parsed': True}, doc_ids=[resume.doc_id])
-        name_from_resume_set = set(parsed_resume.get('fields').get('name').values())
-        for applicant in applicants_db:
-            applicant_name_set = set(applicant.get('name').split(' '))
-            if applicant_name_set == name_from_resume_set or \
-                    applicant_name_set.issubset(name_from_resume_set) or \
-                    applicant_name_set.issuperset(name_from_resume_set):
-                applicants_db.update({'parsed_resume': parsed_resume}, doc_ids=[applicant.doc_id])
+def bind_resume_to_applicant(headers,
+                  account_id,
+                  resumes_db,
+                  applicants_db, 
+                  resume):
+    parsed_resume = parse_resume(headers, account_id, resume)
+    resumes_db.update({'parsed': True},
+                      doc_ids=[resume.doc_id])
+    name_from_resume_set = set(parsed_resume.get('fields').get('name').values())
+    for applicant in applicants_db:
+        applicant_name_set = set(applicant.get('name').split(' '))
+        if applicant_name_set == name_from_resume_set or \
+                applicant_name_set.issubset(name_from_resume_set) or \
+                applicant_name_set.issuperset(name_from_resume_set):
+            applicants_db.update({'parsed_resume': parsed_resume},
+                                 doc_ids=[applicant.doc_id])
 
 
 # TODO: try to use json_proccesor
-def prepare_applicant(applicant):
+def prepare_to_load(applicant):
     resume = applicant.get('parsed_resume')
     fields = resume.get('fields')
     middle_name, last_name, first_name = fields.get('name').values()
@@ -214,7 +222,7 @@ def prepare_applicant(applicant):
     return prepared_applicant
 
 
-def load_applicant(headers, account_id, applicant):
+def load_to_huntflow(headers, account_id, applicant):
     api_method = f'/account/{account_id}/applicants'
     url = f'{api_endpoint}{api_method}'
     try:
@@ -236,33 +244,44 @@ def load_applicant(headers, account_id, applicant):
     return
 
 
-def load_applicants(headers, account_id, applicants_db, vacancies, statuses, unloaded_applicants):
-    for applicant in unloaded_applicants:
-        doc_id = applicant.doc_id
-        salary_text = str(applicant.get('salary'))
-        salary = ''.join(filter(str.isdigit, salary_text))
-        applicants_db.update({'salary': f'{salary} руб.'}, doc_ids=[doc_id])
-        position_text = applicant.get('position')
-        status_text = applicant.get('status')
-        for vacancy in vacancies:
-            if position_text == vacancy.get('position'):
-                applicants_db.update({'vacancy': vacancy.get('id')}, doc_ids=[doc_id])
-        for key, value in statuses_dict.items():
-            if status_text in value:
-                applicants_db.update({'status': key}, doc_ids=[applicant.doc_id])
-                if key == 'Declined':
-                    rejection_reason = 21  # грязный хак, не нашёл где взять все id через api
-                    applicants_db.update({'rejection_reason': rejection_reason}, doc_ids=[applicant.doc_id])
-                for status in statuses:
-                    if status.get('name') == key:
-                        status_id = status.get('id')
-                        applicants_db.update({'status_id': status_id}, doc_ids=[doc_id])
-        prepared_applicant = prepare_applicant(applicant)
-        huntflow_response = load_applicant(headers, account_id, prepared_applicant)
-        applicants_db.update({'loaded': True}, doc_ids=[doc_id])
-        applicants_db.update({'huntflow_response': huntflow_response}, doc_ids=[doc_id])
+def load_applicant(headers,
+                   account_id,
+                   applicants_db,
+                   vacancies,
+                   statuses,
+                   applicant):
+    salary_text = str(applicant.get('salary'))
+    salary = ''.join(filter(str.isdigit, salary_text))
+    applicants_db.update({'salary': f'{salary} руб.'},
+                         doc_ids=[applicant.doc_id])
+    position_text = applicant.get('position')
+    status_text = applicant.get('status')
+    for vacancy in vacancies:
+        if position_text == vacancy.get('position'):
+            applicants_db.update({'vacancy': vacancy.get('id')},
+                                 doc_ids=[applicant.doc_id])
+    for key, value in statuses_dict.items():
+        if status_text in value:
+            applicants_db.update({'status': key},
+                                 doc_ids=[applicant.doc_id])
+            if key == 'Declined':
+                rejection_reason = 21  # грязный хак, не нашёл где взять все id через api
+                applicants_db.update({'rejection_reason': rejection_reason},
+                                     doc_ids=[applicant.doc_id])
+            for status in statuses:
+                if status.get('name') == key:
+                    status_id = status.get('id')
+                    applicants_db.update({'status_id': status_id},
+                                         doc_ids=[applicant.doc_id])
+    prepared_applicant = prepare_to_load(applicant)
+    huntflow_response = load_to_huntflow(headers, account_id, prepared_applicant)
+    applicants_db.update({
+        'huntflow_response': huntflow_response,
+        'loaded': True},
+        doc_ids=[applicant.doc_id])
 
 
+# TODO: try to use json_proccesor
 def prepare_to_attach(applicant):
     vacancy = applicant.get('vacancy')
     status_id = applicant.get('status_id')
@@ -322,7 +341,7 @@ def main(apikey, folder):
     statuses = get_statuses(headers, account_id)
     # sources = get_sources(headers, account_id)
     if None in [account_id, vacancies, statuses]:
-        click.echo('Выход из программы')
+        click.secho('Выход из программы', fg='red')
         exit(1)
     applicants_dbname = f'{folder}-applicants.json'
     resumes_dbname = f'{folder}-resumes.json'
@@ -336,27 +355,29 @@ def main(apikey, folder):
         where('parsed') == False
     )
     if unparsed_resumes:
-        parse_resumes(headers,
-                      account_id,
-                      resumes_db,
-                      applicants_db,
-                      unparsed_resumes
-                      )
+        for resume in unparsed_resumes:
+            bind_resume_to_applicant(headers,
+                                     account_id,
+                                     resumes_db,
+                                     applicants_db,
+                                     resume
+                                     )
     else:
-        click.echo('Все резюме загружены и распарсены.')
+        click.secho('Все резюме загружены и распарсены.', fg='green')
     unloaded_applicants = applicants_db.search(
         where('loaded') == False
     )
     if unloaded_applicants:
-        load_applicants(headers,
-                        account_id,
-                        applicants_db,
-                        vacancies,
-                        statuses,
-                        unloaded_applicants
-                        )
+        for applicant in unloaded_applicants:
+            load_applicant(headers,
+                           account_id,
+                           applicants_db,
+                           vacancies,
+                           statuses,
+                           applicant
+                           )
     else:
-        click.echo('Все кандидаты добавлены в базу.')
+        click.secho('Все кандидаты добавлены в базу.', fg='green')
     unattached_applicants = applicants_db.search(
         where('attached') == False
     )
@@ -366,7 +387,7 @@ def main(apikey, folder):
             if attach_to_vacancy(headers, account_id, applicant, prepared_applicant):
                 applicants_db.update({'attached': True}, doc_ids=[applicant.doc_id])
     else:
-        click.echo('Все кандидаты добавлены на вакансии.')
+        click.secho('Все кандидаты добавлены на вакансии.', fg='green')
 
 
 if __name__ == '__main__':
