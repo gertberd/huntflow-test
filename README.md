@@ -10,6 +10,7 @@ Made for test assignment
 * click
 * pandas
 * tinydb 
+* colorama
 * requests 
 
 `pip install -r requirements.txt`

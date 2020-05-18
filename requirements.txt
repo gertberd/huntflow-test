@@ -11,3 +11,4 @@ six==1.14.0
 tinydb==4.1.1
 urllib3==1.25.9
 xlrd==1.2.0
+colorama~=0.4.3

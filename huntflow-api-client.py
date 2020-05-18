@@ -1,10 +1,11 @@
 import json
+import mimetypes
+from pathlib import Path
+
 import click
 import requests
-import mimetypes
-import pandas as pd
 import colorama
-from pathlib import Path
+import pandas as pd
 from tinydb import TinyDB, where
 
 
@@ -157,10 +158,10 @@ def parse_resume(headers, account_id, resume):
 
 
 def bind_resume_to_applicant(headers,
-                  account_id,
-                  resumes_db,
-                  applicants_db, 
-                  resume):
+                             account_id,
+                             resumes_db,
+                             applicants_db,
+                             resume):
     parsed_resume = parse_resume(headers, account_id, resume)
     resumes_db.update({'parsed': True},
                       doc_ids=[resume.doc_id])
