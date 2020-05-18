@@ -1,10 +1,11 @@
 import json
+import shutil
 import mimetypes
 from pathlib import Path
 
 import click
 import requests
-import colorama
+import colorama  # used by click for color output in MS Windows
 import pandas as pd
 from tinydb import TinyDB, where
 
@@ -34,16 +35,27 @@ def get_request(headers, api_method):
         response = requests.get(url, headers=headers)
         response.raise_for_status()
     except requests.Timeout:
-        click.echo('Время ожидания истекло, попробуйте позже.')
+        click.secho('Время ожидания истекло, попробуйте позже.',
+                    fg='red')
     except requests.HTTPError as err:
-        click.echo(f'Ошибка HTTP, код ошибки: {err.response.status_code}.')
+        click.secho(f'Ошибка HTTP, код ошибки: {err.response.status_code}.',
+                    fg='red')
     except requests.ConnectionError as err:
-        click.echo(f'Сетевые проблемы, попробуйте чуть позднее. Текст ошибки: {err}')
+        click.secho(f'Сетевые проблемы, попробуйте чуть позднее. Текст ошибки: {err}',
+                    fg='red')
     except requests.RequestException as err:
-        click.echo(f'Трудноуловимая ошибка: {err}')
+        click.secho(f'Трудноуловимая ошибка: {err}',
+                    fg='red')
     else:
         return response.json()
-    return
+    finally:
+        if response.status_code != 200:
+            click.secho('Невозможно продолжить работу, '
+                        'проверьте валидность токена и доступность API!',
+                        bg='red',
+                        fg='yellow')
+            exit(1)
+
 
 
 def get_vacancies(headers, account_id):
@@ -52,7 +64,8 @@ def get_vacancies(headers, account_id):
         headers, f'/account/{account_id}/vacancies'
     ).get('items')
     if not vacancies:
-        click.echo('Ни одной вакансии не найдено.')
+        click.secho('Ни одной вакансии не найдено.',
+                    fg='red')
         return
     return vacancies
 
@@ -63,33 +76,40 @@ def get_statuses(headers, account_id):
         headers, f'/account/{account_id}/vacancy/statuses'
     ).get('items')
     if not statuses:
-        click.echo('Ни одного статуса не найдено.')
+        click.secho('Ни одного статуса не найдено.',
+                    fg='red')
         return
     return statuses
 
 
 def get_sources(headers, account_id):
+    click.echo('Получение источников резюме...')
     sources = get_request(
         headers, f'/account/{account_id}/applicant/sources'
     ).get('items')
     if not sources:
-        click.echo('Ни одного источника резюме не найдено.')
+        click.secho('Ни одного источника резюме не найдено.',
+                    fg='red')
         return
     return sources
 
 
 def get_account_id(headers):
+    click.echo('Получение id компании...')
     accounts = get_request(headers, '/accounts').get('items')
     if not accounts:
-        click.echo('Ни одной компании не найдено.')
+        click.secho('Ни одной компании не найдено.',
+                    fg='red')
         return False
     else:
         if len(accounts) == 1:
             return accounts[0].get('id')
         else:
-            click.echo('Доступные компании: ')
+            click.secho('Доступные компании: ',
+                        fg='yellow')
             for number, account in enumerate(accounts):
-                click.echo(f'{number + 1} - {account.get("name")}')
+                click.secho(f'{number + 1} - {account.get("name")}',
+                            fg='yellow')
             value = click.prompt(
                 'Для какой компании добавить соискателей? Введите номер',
                 type=int
@@ -143,16 +163,22 @@ def parse_resume(headers, account_id, resume):
         response = requests.post(url, headers=headers, files=files)
         response.raise_for_status()
     except requests.Timeout:
-        click.echo('Время ожидания истекло, попробуйте позже.')
+        click.secho('Время ожидания истекло, попробуйте позже.',
+                    fg='red')
     except requests.HTTPError as err:
-        click.echo(f'Загрузка файла {resume.get("filename")} '
-                   f'завершилась с ошибкой: {err.response.status_code}.')
+        click.secho(f'Загрузка файла {resume.get("filename")} '
+                    f'завершилась с ошибкой: {err.response.status_code}.',
+                    fg='red')
     except requests.ConnectionError as err:
-        click.echo(f'Сетевые проблемы, попробуйте чуть позднее. Текст ошибки: {err}')
+        click.secho(f'Сетевые проблемы, попробуйте чуть позднее.'
+                    f' Текст ошибки: {err}',
+                    fg='red')
     except requests.RequestException as err:
-        click.echo(f'Трудноуловимая ошибка: {err}')
+        click.secho(f'Трудноуловимая ошибка: {err}',
+                    fg='red')
     else:
-        click.echo(f'Файл {filename} загружен.')
+        click.secho(f'Файл {filename} загружен.',
+                    fg='green')
         return response.json()
     return
 
@@ -230,17 +256,22 @@ def load_to_huntflow(headers, account_id, applicant):
         response = requests.post(url, headers=headers, data=json.dumps(applicant))
         response.raise_for_status()
     except requests.Timeout:
-        click.echo('Время ожидания истекло, попробуйте позже.')
+        click.secho('Время ожидания истекло, попробуйте позже.',
+                    fg='red')
     except requests.HTTPError as err:
-        click.echo(f'Загрузка кандидата '
-                   f'завершилась с ошибкой: {err.response.status_code}.')
+        click.secho(f'Загрузка кандидата '
+                    f'завершилась с ошибкой: {err.response.status_code}.',
+                    fg='red')
     except requests.ConnectionError as err:
-        click.echo(f'Сетевые проблемы, '
-                   f'попробуйте чуть позднее. Текст ошибки: {err}')
+        click.secho(f'Сетевые проблемы, '
+                    f'попробуйте чуть позднее. Текст ошибки: {err}',
+                    fg='red')
     except requests.RequestException as err:
-        click.echo(f'Трудноуловимая ошибка: {err}')
+        click.secho(f'Трудноуловимая ошибка: {err}',
+                    fg='red')
     else:
-        click.echo(f'Кандидат загружен.')
+        click.secho(f'Кандидат загружен.',
+                    fg='green')
         return response.json()
     return
 
@@ -276,10 +307,11 @@ def load_applicant(headers,
                                          doc_ids=[applicant.doc_id])
     prepared_applicant = prepare_to_load(applicant)
     huntflow_response = load_to_huntflow(headers, account_id, prepared_applicant)
-    applicants_db.update({
-        'huntflow_response': huntflow_response,
-        'loaded': True},
-        doc_ids=[applicant.doc_id])
+    if huntflow_response:
+        applicants_db.update({
+            'huntflow_response': huntflow_response,
+            'loaded': True},
+            doc_ids=[applicant.doc_id])
 
 
 # TODO: try to use json_proccesor
@@ -311,38 +343,45 @@ def attach_to_vacancy(headers, account_id, applicant, prepared_applicant):
         response = requests.post(url, headers=headers, data=json.dumps(prepared_applicant))
         response.raise_for_status()
     except requests.Timeout:
-        click.echo('Время ожидания истекло, попробуйте позже.')
+        click.secho('Время ожидания истекло, '
+                    'попробуйте позже.',
+                    fg='red')
     except requests.HTTPError as err:
-        click.echo(f'Добавление кандидата на вакансию '
-                   f'завершилось с ошибкой: {err.response.status_code}.')
+        click.secho(f'Добавление кандидата на вакансию '
+                    f'завершилось с ошибкой: {err.response.status_code}.',
+                    fg='red')
     except requests.ConnectionError as err:
-        click.echo(f'Сетевые проблемы, '
-                   f'попробуйте чуть позднее. Текст ошибки: {err}')
+        click.secho(f'Сетевые проблемы, '
+                    f'попробуйте чуть позднее. Текст ошибки: {err}',
+                    fg='red')
     except requests.RequestException as err:
-        click.echo(f'Трудноуловимая ошибка: {err}')
+        click.secho(f'Трудноуловимая ошибка: {err}',
+                    fg='red')
     else:
-        click.echo(f'Кандидат добавлен.')
+        click.secho(f'Кандидат добавлен.',
+                    fg='green')
         return response.json()
     return
 
 
 @click.command()
-@click.option('--apikey', help='huntflow api key')
+@click.option('--token', help='huntflow-api token')
 @click.option('--folder',
               type=click.Path(exists=True),
               help='folder with applicants')
-def main(apikey, folder):
+def main(token, folder):
     root_folder = Path(folder)
     headers = {
         'User-Agent': 'huntflow-test/0.1 (lialinvitalii@gmail.com)',
-        'Authorization': f'Bearer {apikey}'
+        'Authorization': f'Bearer {token}'
     }
     account_id = get_account_id(headers)
     vacancies = get_vacancies(headers, account_id)
     statuses = get_statuses(headers, account_id)
     # sources = get_sources(headers, account_id)
     if None in [account_id, vacancies, statuses]:
-        click.secho('Выход из программы', fg='red')
+        click.secho('Выход из программы',
+                    fg='red')
         exit(1)
     applicants_dbname = f'{folder}-applicants.json'
     resumes_dbname = f'{folder}-resumes.json'
@@ -364,7 +403,8 @@ def main(apikey, folder):
                                      resume
                                      )
     else:
-        click.secho('Все резюме загружены и распарсены.', fg='green')
+        click.secho('Все резюме загружены и распарсены.',
+                    fg='green')
     unloaded_applicants = applicants_db.search(
         where('loaded') == False
     )
@@ -378,7 +418,8 @@ def main(apikey, folder):
                            applicant
                            )
     else:
-        click.secho('Все кандидаты добавлены в базу.', fg='green')
+        click.secho('Все кандидаты добавлены в базу.',
+                    fg='green')
     unattached_applicants = applicants_db.search(
         where('attached') == False
     )
@@ -388,7 +429,10 @@ def main(apikey, folder):
             if attach_to_vacancy(headers, account_id, applicant, prepared_applicant):
                 applicants_db.update({'attached': True}, doc_ids=[applicant.doc_id])
     else:
-        click.secho('Все кандидаты добавлены на вакансии.', fg='green')
+        click.secho('Все кандидаты добавлены на вакансии.',
+                    fg='green')
+        if click.confirm(f'Удалить папку {root_folder}?'):
+            shutil.rmtree(root_folder)
 
 
 if __name__ == '__main__':
