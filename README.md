@@ -15,4 +15,4 @@ Made for test assignment
 
 `pip install -r requirements.txt`
 ### Usage
-`huntflow-api-client.py --apikey <your api key> --folder <folder with files>`
+`huntflow-api-client.py --token <your token> --folder <folder with files>`
