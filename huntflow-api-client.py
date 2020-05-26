@@ -100,7 +100,7 @@ def get_account_id(headers):
     if not accounts:
         click.secho('Ни одной компании не найдено.',
                     fg='red')
-        return False
+        return
     else:
         if len(accounts) == 1:
             return accounts[0].get('id')
@@ -284,8 +284,7 @@ def load_applicant(headers,
                    applicant):
     salary_text = str(applicant.get('salary'))
     salary = ''.join(filter(str.isdigit, salary_text))
-    applicants_db.update({'salary': f'{salary} руб.'},
-                         doc_ids=[applicant.doc_id])
+    applicant['salary'] = f'{salary} руб.'
     position_text = applicant.get('position')
     status_text = applicant.get('status')
     for vacancy in vacancies:
